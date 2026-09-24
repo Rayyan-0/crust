@@ -1,15 +1,15 @@
 [package]
-name = "crust"
+name = "gocron-rs"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
-axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
 serde = { version = "1", features = ["derive"] }
-tower-http = { version = "0.6", features = ["trace", "cors"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-anyhow = "1.0.104"
-chrono = { version = "0.4", features = ["serde"] }
+serde_yaml = "0.9"
+serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
+humantime = "2.4.0"
+anyhow = "1.0.104"
+jiff = "0.2.37"
