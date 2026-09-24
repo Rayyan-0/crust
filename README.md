@@ -1,8 +1,6 @@
 # crust
 
-A task runner daemon written in Rust. It started as a port of gocron and is
-now maintained as an alternative implementation. It reads the same
-`config/tasks.yaml` schema.
+A task runner daemon written in Rust.
 
 ## Running
 
@@ -19,7 +17,7 @@ Tests:
 cargo test
 ```
 
-The process exits once every `run_on_boot` task has stopped.
+The process exits once every `run_on_boot` task has stopped, or on Ctrl-C.
 
 ## Config
 
@@ -34,8 +32,7 @@ a root (or another task) references it from a hook slot.
   data:
     limits:
       runtime: "1h"
-  concurrent_hooks:
-    labels: [restart-hourly]
+  concurrent_hooks: [restart-hourly]
 
 - name: restart-hourly
   type: timeout
@@ -52,17 +49,24 @@ Task fields:
 | `command` | Executable to run (no arguments) |
 | `data` | Values that referenced tasks can read via `data_path` |
 | `gate_retry_delay` | Wait before retrying when a pre hook rejects, e.g. `"30s"` (default 30s) |
-| `pre_hooks` | Run before the command; any command sent skips (or stops) the run |
-| `concurrent_hooks` | Race the command; a command sent kills it |
-| `post_hooks` | Run after the command |
+| `pre_hooks` | Task names to run before the command; any command sent skips (or stops) the run |
+| `concurrent_hooks` | Task names that race the command; a command sent kills it |
+| `post_hooks` | Task names to run after the command |
 | `type` | Hook type: `interval`, `timeout`, `healthcheck`, `filewatch`, `dispatch` |
 | `data_path` | Paths into the root's `data` that supply the hook's arguments |
 | `send_command` | Command the hook sends: `stop` or `restart` (default `stop`) |
-| `fire_and_forget` | Don't wait for this hook to finish |
-| `dispatch` | Unix socket settings for `dispatch` hooks |
+| `fire_and_forget` | Run in the background; don't wait for it, and ignore any command it sends |
+| `dispatch` | Settings for `dispatch` hooks: `dispatcher_command`, `loops` (default 1), `unix_exec_path`, `unix_read_path` |
+
+A hook needs either a `type` or a `command`; a hook with neither is
+rejected at startup.
 
 Hooks can have their own hooks, and a command sent at any depth is passed up to
-the root. Each finished run is recorded under `config/runs/<task>/<run-id>.yaml`.
+the root. The exception is a `fire_and_forget` hook: nothing it or its own hooks
+send goes anywhere.
+
+Each run of a root's command is recorded under
+`config/runs/<task>/<run-id>.yaml` with its start time, end time and status.
 
 ## Layout
 

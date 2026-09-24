@@ -83,3 +83,120 @@ fn build_runnable(
         post,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn prepare(yaml: &str) -> Result<Vec<Arc<RunnableTask>>> {
+        prepare_tasks(serde_yaml::from_str(yaml).unwrap())
+    }
+
+    fn cycle_error(yaml: &str) -> String {
+        match prepare(yaml) {
+            Ok(_) => panic!("expected startup to fail"),
+            Err(e) => format!("{e:#}"),
+        }
+    }
+
+    #[test]
+    fn root_referencing_itself_is_a_cycle() {
+        let err = cycle_error(
+            r#"
+- name: r
+  run_on_boot: true
+  command: "true"
+  pre_hooks: [r]
+"#,
+        );
+        assert!(err.contains("task cycle: r -> r"), "{err}");
+    }
+
+    #[test]
+    fn hook_pointing_back_at_its_root_is_a_cycle() {
+        let err = cycle_error(
+            r#"
+- name: r
+  run_on_boot: true
+  command: "true"
+  post_hooks: [h]
+- name: h
+  command: "true"
+  post_hooks: [r]
+"#,
+        );
+        assert!(err.contains("task cycle: h -> r -> h"), "{err}");
+    }
+
+    #[test]
+    fn cycle_between_hooks_is_reported() {
+        let err = cycle_error(
+            r#"
+- name: r
+  run_on_boot: true
+  command: "true"
+  pre_hooks: [a]
+- name: a
+  command: "true"
+  post_hooks: [b]
+- name: b
+  command: "true"
+  concurrent_hooks: [a]
+"#,
+        );
+        assert!(err.contains("task cycle: a -> b -> a"), "{err}");
+    }
+
+    #[test]
+    fn shared_hook_is_not_a_cycle() {
+        let roots = prepare(
+            r#"
+- name: r
+  run_on_boot: true
+  command: "true"
+  pre_hooks: [a, b]
+- name: a
+  command: "true"
+  post_hooks: [shared]
+- name: b
+  command: "true"
+  post_hooks: [shared]
+- name: shared
+  command: "true"
+"#,
+        )
+        .unwrap();
+        let pre = &roots[0].pre;
+        assert_eq!(pre.len(), 2);
+        assert!(pre.iter().all(|h| h.post[0].task.name == "shared"));
+    }
+
+    #[test]
+    fn missing_hook_name_is_reported() {
+        let err = cycle_error(
+            r#"
+- name: r
+  run_on_boot: true
+  command: "true"
+  concurrent_hooks: [ghost]
+"#,
+        );
+        assert!(err.contains(r#"no task named "ghost""#), "{err}");
+    }
+
+    #[test]
+    fn hooks_can_be_defined_after_their_root() {
+        let roots = prepare(
+            r#"
+- name: r
+  run_on_boot: true
+  command: "true"
+  post_hooks: [later]
+- name: later
+  command: "true"
+"#,
+        )
+        .unwrap();
+        assert_eq!(roots[0].post[0].task.name, "later");
+    }
+}

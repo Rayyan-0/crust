@@ -11,7 +11,7 @@ use crate::task::{JobCmd, Task, TaskType};
 // TODO: use inotify or some other standerdized rather than polling. Consider platform-specific builds
 const FILEWATCH_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
-// Builds the function that runs a task's body: type wins over command; neither is a no-op composite.
+// Builds the function that runs a task's body: type wins over command; a task with neither is rejected.
 pub fn build_body(t: &Task, args: &[Value]) -> Result<BodyFn> {
     match t.task_type {
         Some(TaskType::Interval) | Some(TaskType::Timeout) => {

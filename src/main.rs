@@ -5,23 +5,32 @@ mod runs;
 mod runtime;
 mod startup;
 mod task;
-use std::path::Path;
+use anyhow::{bail, Ok};
+use clap::Parser;
+use std::{panic, path::Path};
 use tokio::sync::mpsc;
 
+#[derive(clap::Parser)]
+struct Args {
+    #[arg(long)]
+    validate: bool,
+}
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let tasks_dir = Path::new(task::TASKS_FILE)
-        .parent()
-        .unwrap_or(Path::new("."));
-    for dir in [tasks_dir, Path::new(runs::RUNS_DIR)] {
-        if !dir.exists() {
-            std::fs::create_dir_all(dir).unwrap();
+    match Path::new(task::TASKS_FILE).exists() {
+        true => {}
+        false => {
+            bail!("tasks.yaml not found. Check README for the format")
         }
-    }
+    };
 
+    let args = Args::parse();
     let tasks = task::load_tasks()?;
     let roots = startup::prepare_tasks(tasks)?;
-
+    if args.validate {
+        println!("config ok: {} root task(s)", roots.len());
+        return Ok(());
+    }
     let (run_tx, run_rx) = mpsc::channel(16);
     tokio::spawn(runs::start_run_writer(run_rx));
 

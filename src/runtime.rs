@@ -107,14 +107,14 @@ async fn run_iteration(
                 Ok(s) => Some(format!("exit status {s}")),
                 Err(e) => Some(e.to_string()),
             };
-            eprintln!("job finished job={} error={:?}", &j.task.name, err);
             let _ = run_tx.send(RunRecord {
                 job_name: j.task.name.clone(),
                 run_id: uuid::Uuid::new_v4(),
-                status: TaskStatus::Completed,
+                status: if err.is_none() { TaskStatus::Completed } else { TaskStatus::Failed },
                 start_time: start.to_string(),
                 end_time: jiff::Timestamp::now().to_string(),
             }).await;
+            eprintln!("job finished job={} error={:?}", &j.task.name, err);
         }
         cmd = concurrent_rx.recv() => {
             // a concurrent hook fired: the child is killed on drop
@@ -328,7 +328,7 @@ mod tests {
     }
 
     fn write_script(body: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("gocron-rs-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("crust-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("script.sh");
         std::fs::write(&path, format!("#!/bin/sh\n{body}")).unwrap();
@@ -627,6 +627,21 @@ mod tests {
             run_rx.try_recv().is_ok(),
             "expected a run record once the pre slot passed"
         );
+    }
+
+    #[tokio::test]
+    async fn run_task_records_a_failing_command_as_failed() {
+        let script = write_script("exit 1\n");
+        let j = Arc::new(RunnableTask {
+            post: vec![fake(sends(JobCmd::Stop), false)],
+            ..node(command_task("failing", &script), silent())
+        });
+        let (run_tx, mut run_rx) = mpsc::channel(4);
+        tokio::time::timeout(StdDuration::from_secs(2), run_task(j, run_tx))
+            .await
+            .unwrap();
+        let record = run_rx.try_recv().expect("expected a run record");
+        assert!(matches!(record.status, TaskStatus::Failed));
     }
 
     #[tokio::test]
